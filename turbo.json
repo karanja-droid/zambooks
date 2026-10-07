@@ -1,10 +1,10 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "tasks": {
-    "typecheck": {},
-    "lint": {},
-    "test": {},
-    "test:invariants": {},
-    "coverage": { "outputs": ["coverage/**"] }
+    "typecheck": { "dependsOn": ["^typecheck"] },
+    "lint": { "dependsOn": ["^lint"] },
+    "test": { "dependsOn": ["^test"] },
+    "test:invariants": { "dependsOn": ["^test:invariants"] },
+    "coverage": { "dependsOn": ["^coverage"], "outputs": ["coverage/**"] }
   }
 }
