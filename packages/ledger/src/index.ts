@@ -8,3 +8,5 @@ export { post } from './post';
 export { reverse, type ReverseRequest } from './reverse';
 export { PERIOD_ADMIN, closePeriod, reopenPeriod, type PeriodChange } from './periods';
 export { instantiateTemplate, type InstantiatedTemplate } from './coa';
+export { accountBalances, balanceSheetCheck, subledgerBalances, trialBalance } from './reports';
+export type { BalanceSheetCheck, SubledgerBalances, TrialBalance, TrialBalanceRow } from './reports';
