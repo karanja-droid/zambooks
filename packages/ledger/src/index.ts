@@ -5,3 +5,4 @@ export { openBooks } from './books';
 
 export { findOpenPeriod, prepareLines } from './validate';
 export { post } from './post';
+export { reverse, type ReverseRequest } from './reverse';

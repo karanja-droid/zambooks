@@ -1,6 +1,7 @@
 import { errorCode } from '@zambooks/shared';
 import { describe, expect, it } from 'vitest';
 import { JournalId, UserId } from './ids';
+import type { PostedLine } from './model';
 import { post } from './post';
 import { reverse } from './reverse';
 import { ACC, ALICE, BOB, CAROL, draft, demoBooks, testContext, usd, usdZmw } from './testing/fixtures';
@@ -27,7 +28,7 @@ describe('reverse (§6.5)', () => {
     expect(r.journal.memo).toBe('Reversal of GJ-1');
     expect(r.journal.lines).toHaveLength(journal.lines.length);
     r.journal.lines.forEach((l, i) => {
-      const o = journal.lines[i]!;
+      const o = journal.lines[i] as PostedLine;
       expect(l.side).toBe(o.side === 'DR' ? 'CR' : 'DR');
       expect(l.functionalAmount.equals(o.functionalAmount)).toBe(true);
       expect(l.txnAmount.equals(o.txnAmount)).toBe(true);
