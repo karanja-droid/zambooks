@@ -1,4 +1,5 @@
-import { Money, sumMoney } from '@zambooks/shared';
+import { Money, isIsoDate, sumMoney } from '@zambooks/shared';
+import { LedgerError } from './errors';
 import type { AccountId, PartyId } from './ids';
 import type { AccountType, CompanyBooks, PostedLine } from './model';
 
@@ -32,6 +33,8 @@ export interface SubledgerBalances {
 const signed = (l: PostedLine): Money => (l.side === 'DR' ? l.functionalAmount : l.functionalAmount.negate());
 
 function linesAsOf(books: CompanyBooks, asOf: string): PostedLine[] {
+  // Dates compare as strings, so a malformed as-of date would silently select the wrong journals.
+  if (!isIsoDate(asOf)) throw new LedgerError('INVALID_DATE', `As-of date ${asOf} is not a real YYYY-MM-DD date`);
   return books.journals.filter((j) => j.date <= asOf).flatMap((j) => j.lines);
 }
 
