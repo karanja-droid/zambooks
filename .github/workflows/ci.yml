@@ -1,14 +1,21 @@
 name: ci
 on: [push, pull_request]
+permissions:
+  contents: read
 jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with: { persist-credentials: false }
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
+      - name: hook tests (needs jq, preinstalled on ubuntu-latest)
+        run: |
+          command -v jq
+          bash .claude/hooks/test-hooks.sh
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test
