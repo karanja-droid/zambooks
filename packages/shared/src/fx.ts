@@ -1,4 +1,3 @@
-import Decimal from 'decimal.js';
 import { CURRENCIES, Money, MoneyError, type CurrencyCode } from './money';
 
 export interface FxRate {
@@ -10,24 +9,54 @@ export interface FxRate {
   readonly rateDate: string;
 }
 
-const D = Decimal.clone({ precision: 50, rounding: Decimal.ROUND_HALF_EVEN });
-const PLAIN_DECIMAL = /^\d+(\.\d+)?$/;
+/** No leading zeros in the integer part (other than a bare "0"). */
+const PLAIN_DECIMAL = /^(0|[1-9]\d*)(\.\d+)?$/;
+
+interface ParsedRate {
+  readonly num: bigint;
+  readonly den: bigint;
+}
+
+function tryParseRate(rate: string): ParsedRate | null {
+  const m = PLAIN_DECIMAL.exec(rate);
+  if (!m) return null;
+  const intPart = m[1];
+  const fracPart = m[2] ? m[2].slice(1) : '';
+  const num = BigInt(intPart + fracPart);
+  if (num <= 0n) return null;
+  return { num, den: 10n ** BigInt(fracPart.length) };
+}
 
 export function isValidRate(rate: string): boolean {
-  return PLAIN_DECIMAL.test(rate) && new D(rate).gt(0);
+  return tryParseRate(rate) !== null;
+}
+
+/** Sign-aware half-even division of n / d, for d > 0. */
+function divideHalfEven(n: bigint, d: bigint): bigint {
+  const negative = n < 0n;
+  const absN = negative ? -n : n;
+  let q = absN / d;
+  const r = absN % d;
+  const twiceR = r * 2n;
+  if (twiceR > d || (twiceR === d && q % 2n !== 0n)) q += 1n;
+  return negative ? -q : q;
 }
 
 export function convert(amount: Money, rate: FxRate): Money {
   if (amount.currency !== rate.from) {
     throw new MoneyError('CURRENCY_MISMATCH', `Amount is ${amount.currency}, rate is from ${rate.from}`);
   }
-  if (!isValidRate(rate.rate)) throw new MoneyError('INVALID_RATE', `Invalid FX rate ${JSON.stringify(rate.rate)}`);
-  const shift = CURRENCIES[rate.to].scale - CURRENCIES[rate.from].scale;
-  const minor = new D(amount.minor.toString())
-    .mul(rate.rate)
-    .mul(new D(10).pow(shift))
-    .toDecimalPlaces(0, D.ROUND_HALF_EVEN);
-  return Money.ofMinor(BigInt(minor.toFixed(0)), rate.to);
+  const parsed = tryParseRate(rate.rate);
+  if (!parsed) throw new MoneyError('INVALID_RATE', `Invalid FX rate ${JSON.stringify(rate.rate)}`);
+  const { num, den } = parsed;
+  if (rate.from === rate.to && num !== den) {
+    throw new MoneyError('INVALID_RATE', `Same-currency rate must be 1, got ${JSON.stringify(rate.rate)}`);
+  }
+  const toScale = CURRENCIES[rate.to].scale;
+  const fromScale = CURRENCIES[rate.from].scale;
+  const numerator = amount.minor * num * 10n ** BigInt(toScale);
+  const denominator = den * 10n ** BigInt(fromScale);
+  return Money.ofMinor(divideHalfEven(numerator, denominator), rate.to);
 }
 
 export function identityRate(currency: CurrencyCode, rateDate: string): FxRate {
