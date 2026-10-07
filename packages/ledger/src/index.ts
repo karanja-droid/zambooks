@@ -7,3 +7,4 @@ export { findOpenPeriod, prepareLines } from './validate';
 export { post } from './post';
 export { reverse, type ReverseRequest } from './reverse';
 export { PERIOD_ADMIN, closePeriod, reopenPeriod, type PeriodChange } from './periods';
+export { instantiateTemplate, type InstantiatedTemplate } from './coa';
