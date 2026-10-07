@@ -1,1 +1,6 @@
 .superpowers/
+node_modules/
+coverage/
+dist/
+.turbo/
+.claude/active-register-ref

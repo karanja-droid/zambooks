@@ -1,0 +1,10 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "tasks": {
+    "typecheck": {},
+    "lint": {},
+    "test": {},
+    "test:invariants": {},
+    "coverage": { "outputs": ["coverage/**"] }
+  }
+}
