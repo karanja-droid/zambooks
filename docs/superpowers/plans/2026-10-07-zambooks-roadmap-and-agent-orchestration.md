@@ -15,7 +15,7 @@ Only plan 01 is written in full (`2026-10-07-zambooks-01-foundation-and-ledger-c
 | # | Plan | Spec § | Depends on | Parallelisable with |
 |---|---|---|---|---|
 | 01 | Foundation + pure ledger core (monorepo, CI, Money/FX, domain model, posting engine, reversals, periods, number series, TB, CoA template, invariants 1–3, 5–10, 12 (domain level), property tests, `.claude` config) | 0, 1 (domain half), 6, 13 | — | — |
-| 02 | Persistence + tenancy: Postgres 16, Drizzle migrations, RLS, gapless series under concurrency, Testcontainers, invariant 12 at DB level | 1 | 01 | 03 |
+| 02 | Persistence + tenancy (**prerequisite: CI SAST/SCA/secret scanning, §8**): Postgres 16, Drizzle migrations, RLS, gapless series under concurrency, Testcontainers, invariant 12 at DB level | 1 | 01 | 03 |
 | 03 | Identity + audit: OIDC, RBAC, SoD, MFA for privileged roles, hash-chained append-only audit log | 1, 8 | 01 | 02 |
 | 04 | API shell: Fastify + Zod + OpenAPI, contract tests, rate limiting, seeded demo company that balances | 1 | 02, 03 | — |
 | 05 | Web shell: Vite/React/TanStack/shadcn, auth flow, CoA + journal + TB screens, axe, Playwright | 2 (UI) | 04 | 06 |

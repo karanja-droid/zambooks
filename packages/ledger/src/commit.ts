@@ -99,9 +99,10 @@ function checkHeader(books: CompanyBooks, header: JournalHeader): void {
 
 /**
  * Numbers, stamps and appends one journal. Pure and atomic: every check on the books,
- * header and lines runs before the context is asked for an id or a timestamp. The one
- * check that must follow is that the issued id is not already in the books; it runs
- * before anything is numbered, stamped or appended. Either way a rejection leaves no
+ * header and lines runs before the context is asked for an id or a timestamp. The two
+ * checks that must follow are on the context's own output (the issued id is not already
+ * in the books, and the timestamp is ISO-8601 UTC); they run before anything is
+ * numbered, stamped or appended. Either way a rejection leaves no
  * trace (the series number is derived from the unchanged books, so none is consumed),
  * and the input books are never mutated. The result, the new books and every journal and line
  * are frozen; the Maps are fresh copies (a Map cannot be frozen), so no Map is shared with the input.
