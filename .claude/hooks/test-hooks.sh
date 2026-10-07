@@ -201,4 +201,26 @@ expect 2 "$tmp_root/MIGRATIONS/applied/0001.sql" "case: MIGRATIONS/applied/0001.
 
 expect 0 "$tmp_root/notes/plain.md" "symlink/case checks leave ordinary files allowed"
 
+# --- Field parsing fails closed (security review L2) ---
+
+expect_raw 2 "$(jq -n --arg path "$register" --arg c "$(printf "$verified_row")" \
+  '{tool_name:"",tool_input:{file_path:$path,content:$c}}')" \
+  "parsing: empty tool_name fails closed"
+expect_raw 2 "$(jq -n --arg path "$register" --arg c "$(printf "$verified_row")" \
+  '{tool_input:{file_path:$path,content:$c}}')" \
+  "parsing: missing tool_name fails closed"
+expect_raw 2 "$(printf '{"tool_name":"Edit","tool_input":{"file_path":"%s"}}' "$tmp_root/notes/plain.md" | jq '.tool_name = 7')" \
+  "parsing: non-string tool_name fails closed"
+expect_raw 2 "$(jq -n --arg path "$register" --arg c "$(printf "$verified_row")" \
+  '{tool_name:"Write",tool_input:{file_path:"",path:$path,content:$c}}')" \
+  "parsing: empty file_path falls through to path (register still guarded)"
+expect_raw 2 "$(jq -n --arg p "$tmp_root/packages/tax-zm/rates/vat.json" \
+  '{tool_name:"Edit",tool_input:{file_path:"",path:"",notebook_path:$p}}')" \
+  "parsing: empty file_path and path fall through to notebook_path"
+expect_raw 2 "$(jq -n --arg p "packages/tax-zm/rates/vat.json" \
+  '{tool_name:"Edit",tool_input:{file_path:$p},cwd:""}')" \
+  "parsing: empty cwd falls back to CLAUDE_PROJECT_DIR for a relative rates path"
+expect_raw 2 '[]' "parsing: non-object payload fails closed"
+expect_raw 0 '{"tool_name":"Edit","tool_input":{}}' "parsing: no target path is allowed"
+
 exit $fail

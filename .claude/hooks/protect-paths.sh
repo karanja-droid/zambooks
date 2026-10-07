@@ -24,15 +24,18 @@ command -v realpath >/dev/null 2>&1 || fail_closed "realpath not found"
 
 input="$(cat)" || fail_closed "could not read stdin"
 
-# One jq call: validate the JSON and pull every field we need as TSV. Any parse failure or
-# unexpected shape makes this `read` fail, which we treat as fail-closed below.
-fields="$(jq -r -e '
-  [ (.tool_name // ""),
-    (.tool_input.file_path // .tool_input.path // .tool_input.notebook_path // ""),
-    (.cwd // "") ] | @tsv
-' <<<"$input" 2>/dev/null)" || fail_closed "invalid JSON input or unexpected shape"
-
-IFS=$'\t' read -r tool_name raw_path cwd <<<"$fields" || fail_closed "could not parse tool input"
+# Each field is pulled with its own jq call (security review L2): a single TSV read let an
+# empty field collapse under IFS whitespace and shift the others, which failed open.
+jq -e 'type == "object"' <<<"$input" >/dev/null 2>&1 || fail_closed "invalid JSON input or unexpected shape"
+tool_name="$(jq -r '.tool_name // "" | if type == "string" then . else "" end' <<<"$input" 2>/dev/null)" \
+  || fail_closed "could not read tool_name"
+[[ -n "$tool_name" ]] || fail_closed "empty or missing tool_name"
+# First non-empty string among the path fields: an empty file_path must not hide a real path.
+raw_path="$(jq -r '[.tool_input.file_path?, .tool_input.path?, .tool_input.notebook_path?]
+  | map(select(type == "string" and . != "")) | first // ""' <<<"$input" 2>/dev/null)" \
+  || fail_closed "could not read target path"
+cwd="$(jq -r '.cwd // "" | if type == "string" then . else "" end' <<<"$input" 2>/dev/null)" \
+  || fail_closed "could not read cwd"
 
 [[ -n "$raw_path" ]] || exit 0 # no target path: nothing to guard
 
