@@ -1,6 +1,6 @@
 # Compliance Register
 
-Spec §10. Claude Code may add `VERIFY` rows; only a named human reviewer may set `VERIFIED`. Linted by `pnpm check:register`.
+Spec §10. Claude Code may add `VERIFY` rows; only a named human reviewer may set `VERIFIED`. Linted by `pnpm check:register`. The linter checks format only; the control is the Claude Code PreToolUse hook (which blocks AI writes of VERIFIED) plus human PR review.
 
 | ID | Rule | Source | Effective | Implementation | Test | verified_by | Status |
 |---|---|---|---|---|---|---|---|
