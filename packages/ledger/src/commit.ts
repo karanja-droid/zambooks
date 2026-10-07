@@ -87,9 +87,12 @@ function checkHeader(books: CompanyBooks, header: JournalHeader): void {
 }
 
 /**
- * Numbers, stamps and appends one journal. Pure and atomic: every check runs before
- * the context is asked for an id or a timestamp, a rejection leaves no trace, and the
- * input books are never mutated. The result is a new, deeply frozen books value.
+ * Numbers, stamps and appends one journal. Pure and atomic: every check on the books,
+ * header and lines runs before the context is asked for an id or a timestamp. The one
+ * check that must follow is that the issued id is not already in the books; it runs
+ * before anything is numbered, stamped or appended. Either way a rejection leaves no
+ * trace (the series number is derived from the unchanged books, so none is consumed),
+ * and the input books are never mutated. The result is a new, deeply frozen books value.
  */
 export function commit(
   books: CompanyBooks,
@@ -104,6 +107,9 @@ export function commit(
   // §6.7: gapless per company (these books) and per series; only a successful commit takes a number.
   const number = (books.seriesCounters.get(header.series) ?? 0) + 1;
   const id = ctx.newJournalId();
+  if (books.journals.some((j) => j.id === id)) {
+    throw new LedgerError('DUPLICATE_JOURNAL_ID', `Journal id ${id} is already in the books`);
+  }
   const postedAt = ctx.now();
 
   const postedLines: readonly PostedLine[] = Object.freeze(

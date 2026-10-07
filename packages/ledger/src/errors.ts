@@ -23,7 +23,8 @@ export type LedgerErrorCode =
   | 'DUPLICATE_ACCOUNT_CODE'
   | 'NO_ROUNDING_ACCOUNT'
   | 'INVALID_PERIODS'
-  | 'INVALID_TEMPLATE';
+  | 'INVALID_TEMPLATE'
+  | 'DUPLICATE_JOURNAL_ID';
 
 export class LedgerError extends Error {
   constructor(
