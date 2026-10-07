@@ -31,4 +31,5 @@ Fable 5.1 is the default author for ledger, tax and security implementation task
 - Low findings carried forward:
   - `prepareLines` throws a TypeError, not a LedgerError, on `fxRate: null`. This is unreachable from typed callers.
   - The books Maps are mutable at runtime (`ReadonlyMap` is enforced at compile time only).
-  - Neither implementation rejects a blank series or a reused `ctx.newJournalId()`. There is no error code for either yet.
+  - Neither implementation rejects a blank series. There is no error code for it yet.
+  - Update: `commit` now rejects a reused `ctx.newJournalId()` with `DUPLICATE_JOURNAL_ID` (6a10a56).
