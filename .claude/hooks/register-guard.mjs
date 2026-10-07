@@ -7,7 +7,10 @@
 // supplies) so that substring-only edits (e.g. old_string "VERIFY |" -> new_string
 // "VERIFIED |", or old_string " VERIFY " -> new_string " VERIFIED ") can't hide the
 // resulting row from detection. Exits 0 if safe, 2 if it would introduce a new VERIFIED
-// cell, and 2 (fail closed) if the input can't be understood at all.
+// cell, and 2 (fail closed) if the input can't be understood at all — including when an
+// Edit/MultiEdit step's old_string isn't found verbatim in the current file: we can't
+// assume the real tool call also fails (e.g. curly-quote normalisation), so we refuse to
+// treat the file as unchanged (fix round 2, finding A).
 
 import fs from "node:fs";
 
@@ -45,10 +48,29 @@ try {
 }
 
 function applyReplace(content, oldStr, newStr, replaceAll) {
-  if (typeof oldStr !== "string" || oldStr === "" || typeof newStr !== "string") return content;
-  if (replaceAll) return content.split(oldStr).join(newStr);
+  if (typeof newStr !== "string") return content;
+  if (typeof oldStr !== "string" || oldStr === "") {
+    // An empty old_string means Edit/MultiEdit is writing the whole file from new_string
+    // (e.g. the register doesn't exist yet) — identical in effect to Write. Treating this
+    // as "unchanged" (as earlier code did) silently hid new_string's content, including any
+    // VERIFIED row, from detection. Fix round 2, finding A.
+    return newStr;
+  }
+  if (replaceAll) {
+    if (!content.includes(oldStr)) {
+      fail("old_string not found verbatim in the current register.md (replace_all) — cannot reconstruct the post-edit file");
+    }
+    return content.split(oldStr).join(newStr);
+  }
   const idx = content.indexOf(oldStr);
-  if (idx === -1) return content; // old_string not found: the real tool call would no-op/error too
+  if (idx === -1) {
+    // Not found verbatim. We can't assume the real tool call also fails: e.g. an editor that
+    // normalises curly quotes to straight ones before matching can still succeed here even
+    // though our strict indexOf() doesn't. Silently treating the file as unchanged (as
+    // earlier code did) would let such a non-verbatim old_string flip a row to VERIFIED
+    // without us ever inspecting the result. Fail closed instead. Fix round 2, finding A.
+    fail("old_string not found verbatim in the current register.md — cannot reconstruct the post-edit file");
+  }
   return content.slice(0, idx) + newStr + content.slice(idx + oldStr.length);
 }
 
@@ -93,7 +115,12 @@ for (const line of postLines) {
   const cells = line.split("|");
   const hasVerified = cells.some((cell) => normaliseCell(cell) === "VERIFIED");
   if (!hasVerified) continue;
-  if (preLines.has(line)) continue; // already present verbatim before this edit: not newly introduced
+  // already present verbatim before this edit: not newly introduced by this tool call.
+  // By design this means any AI edit that CHANGES an existing VERIFIED row (its source,
+  // date, implementation path, etc.) is still blocked: the edited line's text no longer
+  // matches the pre-edit line verbatim, so it falls through to "offending" below. A change
+  // to a verified row requires a human to re-verify it, not just re-approve an AI edit.
+  if (preLines.has(line)) continue;
   offending = line;
   break;
 }
