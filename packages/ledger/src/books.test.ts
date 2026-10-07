@@ -2,7 +2,7 @@ import { errorCode } from '@zambooks/shared';
 import { describe, expect, it } from 'vitest';
 import { openBooks } from './books';
 import { AccountId, PeriodId } from './ids';
-import type { Company } from './model';
+import type { Account, Company } from './model';
 import { ACC, CO, OTHER_CO, demoAccounts, demoBooks, demoPeriods } from './testing/fixtures';
 
 const company: Company = { id: CO, name: 'Demo', functionalCurrency: 'ZMW', roundingAccountId: ACC.rounding };
@@ -17,12 +17,12 @@ describe('openBooks', () => {
   });
 
   it('rejects an account from another company (§6.12)', () => {
-    const foreign = { ...demoAccounts()[0]!, id: AccountId('x'), code: '9000', companyId: OTHER_CO };
+    const foreign = { ...(demoAccounts()[0] as Account), id: AccountId('x'), code: '9000', companyId: OTHER_CO };
     expect(errorCode(() => openBooks(company, [...demoAccounts(), foreign], demoPeriods()))).toBe('CROSS_TENANT');
   });
 
   it('rejects duplicate account codes', () => {
-    const dup = { ...demoAccounts()[0]!, id: AccountId('x') };
+    const dup = { ...(demoAccounts()[0] as Account), id: AccountId('x') };
     expect(errorCode(() => openBooks(company, [...demoAccounts(), dup], demoPeriods()))).toBe('DUPLICATE_ACCOUNT_CODE');
   });
 
