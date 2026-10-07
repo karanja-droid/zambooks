@@ -100,7 +100,8 @@ function checkHeader(books: CompanyBooks, header: JournalHeader): void {
  * check that must follow is that the issued id is not already in the books; it runs
  * before anything is numbered, stamped or appended. Either way a rejection leaves no
  * trace (the series number is derived from the unchanged books, so none is consumed),
- * and the input books are never mutated. The result is a new, deeply frozen books value.
+ * and the input books are never mutated. The result, the new books and every journal and line
+ * are frozen; the Maps are fresh copies (a Map cannot be frozen), so no Map is shared with the input.
  */
 export function commit(
   books: CompanyBooks,

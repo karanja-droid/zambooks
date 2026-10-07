@@ -19,7 +19,15 @@ function transition(
   if (!reason.trim()) throw new LedgerError('REASON_REQUIRED', 'A reason is required');
   const periods = Object.freeze(books.periods.map((p) => (p.id === periodId ? Object.freeze({ ...p, status: to }) : p)));
   const audit: AuditEvent = Object.freeze({ type, companyId: books.company.id, periodId, actorId: actor.id, reason, at: now });
-  return { books: Object.freeze({ ...books, periods }), audit };
+  const next: CompanyBooks = Object.freeze({
+    company: books.company,
+    accounts: new Map(books.accounts),
+    periods,
+    journals: books.journals,
+    seriesCounters: new Map(books.seriesCounters),
+    reversals: new Map(books.reversals),
+  });
+  return Object.freeze({ books: next, audit });
 }
 
 export function closePeriod(books: CompanyBooks, periodId: PeriodId, actor: Actor, reason: string, now: string): PeriodChange {
