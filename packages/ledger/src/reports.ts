@@ -54,7 +54,7 @@ export function trialBalance(books: CompanyBooks, asOf: string): TrialBalance {
       debit: bal.isPositive() ? bal : zero,
       credit: bal.isNegative() ? bal.negate() : zero,
     }))
-    .sort((a, b) => a.code.localeCompare(b.code));
+    .sort((a, b) => (a.code < b.code ? -1 : a.code > b.code ? 1 : 0));
   return {
     rows,
     totalDebit: sumMoney(rows.map((r) => r.debit), currency),
@@ -82,7 +82,6 @@ export function subledgerBalances(books: CompanyBooks, asOf: string, control: 'A
   for (const l of linesAsOf(books, asOf)) {
     if (books.accounts.get(l.accountId)?.control !== control) continue;
     controlTotal = controlTotal.add(signed(l));
-    /* v8 ignore next -- validate.ts's requireParty already guarantees every AR/AP control-account line carries a partyId. */
     if (l.partyId) {
       byParty.set(l.partyId, (byParty.get(l.partyId) ?? zero).add(signed(l)));
       partyTotal = partyTotal.add(signed(l));

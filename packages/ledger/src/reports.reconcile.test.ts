@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { JournalId } from './ids';
-import type { CompanyBooks, PostedJournal, PostedLine } from './model';
+import { AccountId, JournalId } from './ids';
+import type { Account, CompanyBooks, PostedJournal, PostedLine } from './model';
 import { post } from './post';
-import { accountBalances, subledgerBalances } from './reports';
+import { accountBalances, subledgerBalances, trialBalance } from './reports';
 import { ACC, CO, ALICE, PARTY, draft, demoBooks, testContext, zmw } from './testing/fixtures';
 
 /** Replicated from reports.test.ts (author may not edit that file). */
@@ -54,6 +54,59 @@ function booksWithOrphanArLine(): CompanyBooks {
   return { ...base, journals: [journal] };
 }
 
+/**
+ * Two distinct accounts sharing the same code, bypassing the uniqueness that CoA
+ * instantiation conventionally enforces. Exercises the deterministic comparator's
+ * tie-break branch at reports.ts, which `localeCompare` never surfaced as a branch.
+ */
+function booksWithDuplicateCodeAccounts(): CompanyBooks {
+  const base = demoBooks();
+  const dupAId = AccountId('a-dup-1');
+  const dupBId = AccountId('a-dup-2');
+  const makeDup = (id: AccountId, name: string): Account => ({
+    id,
+    companyId: CO,
+    code: '9000',
+    name,
+    type: 'ASSET',
+    control: null,
+    active: true,
+  });
+  const accounts = new Map(base.accounts);
+  accounts.set(dupAId, makeDup(dupAId, 'Dup A'));
+  accounts.set(dupBId, makeDup(dupBId, 'Dup B'));
+  const makeLine = (accountId: AccountId, amount: string): PostedLine => ({
+    accountId,
+    side: 'DR',
+    partyId: null,
+    txnAmount: zmw(amount),
+    rate: '1',
+    rateSource: 'TEST',
+    rateDate: '2026-10-10',
+    functionalAmount: zmw(amount),
+    isRounding: false,
+    lineNo: 1,
+    companyId: CO,
+    authorId: ALICE,
+    postedAt: '2026-10-10T00:00:00.000Z',
+  });
+  const journal: PostedJournal = {
+    id: JournalId('j-dup-1'),
+    companyId: CO,
+    series: 'GJ',
+    number: 998,
+    date: '2026-10-10',
+    currency: 'ZMW',
+    memo: 'hand-built: two accounts sharing the same code',
+    authorId: ALICE,
+    approverId: null,
+    postedAt: '2026-10-10T00:00:00.000Z',
+    reversalOf: null,
+    lines: [makeLine(dupAId, '10.00'), makeLine(dupBId, '20.00')],
+  };
+  return { ...base, accounts, journals: [journal] };
+}
+
 describe('reports: reconciliation failure and as-of boundary', () => {
   it('reports reconciles === false when a control line bypasses validation and has no party', () => {
     const result = subledgerBalances(booksWithOrphanArLine(), '2026-10-31', 'AR');
@@ -64,5 +117,11 @@ describe('reports: reconciliation failure and as-of boundary', () => {
 
   it('includes the 2026-10-05 journal in the as-of balance for that same date (inclusive boundary)', () => {
     expect(accountBalances(scenario(), '2026-10-05').get(ACC.ar)?.toDecimalString()).toBe('1160.00');
+  });
+
+  it('sorts two rows sharing the same code deterministically, without relying on locale collation', () => {
+    const dupRows = trialBalance(booksWithDuplicateCodeAccounts(), '2026-10-31').rows.filter((r) => r.code === '9000');
+    expect(dupRows).toHaveLength(2);
+    expect(dupRows.map((r) => r.debit.toDecimalString()).sort()).toEqual(['10.00', '20.00']);
   });
 });
