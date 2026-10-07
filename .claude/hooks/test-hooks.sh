@@ -223,4 +223,25 @@ expect_raw 2 "$(jq -n --arg p "packages/tax-zm/rates/vat.json" \
 expect_raw 2 '[]' "parsing: non-object payload fails closed"
 expect_raw 0 '{"tool_name":"Edit","tool_input":{}}' "parsing: no target path is allowed"
 
+# --- Guard and CI files are never AI-editable, ref or not (security review M2) ---
+
+echo "ZM-0001" > "$ref"
+expect 2 "$tmp_root/.claude/hooks/protect-paths.sh" "guard: .claude/hooks/protect-paths.sh is blocked even with a valid ref"
+expect 2 "$tmp_root/.claude/hooks/register-guard.mjs" "guard: .claude/hooks/register-guard.mjs is blocked"
+expect 2 "$tmp_root/.claude/hooks/new-hook.sh" "guard: a new file under .claude/hooks is blocked"
+expect 2 "$tmp_root/.claude/settings.json" "guard: .claude/settings.json is blocked"
+expect 2 "$tmp_root/.claude/settings.local.json" "guard: .claude/settings.local.json is blocked"
+expect 2 "$tmp_root/scripts/check-register.mjs" "guard: scripts/check-register.mjs is blocked"
+expect 2 "$tmp_root/.github/workflows/ci.yml" "guard: .github/workflows/ci.yml is blocked"
+expect 2 "$tmp_root/.github/CODEOWNERS" "guard: .github/CODEOWNERS is blocked"
+expect 2 "$tmp_root/.Claude/Hooks/protect-paths.sh" "guard: case variant .Claude/Hooks is blocked"
+ln -s "$tmp_root/.github/workflows" "$tmp_root/notes/wf"
+expect 2 "$tmp_root/notes/wf/ci.yml" "guard: directory symlink to .github/workflows is blocked"
+expect_raw 2 "$(jq -n --arg p ".claude/settings.json" --arg cwd "$tmp_root" \
+  '{tool_name:"Write",tool_input:{file_path:$p,content:"{}"},cwd:$cwd}')" \
+  "guard: relative .claude/settings.json is blocked"
+rm -f "$ref"
+expect 0 "$tmp_root/.claude/agents/ledger-reviewer.md" "guard: .claude/agents stays editable"
+expect 0 "$tmp_root/scripts/other.mjs" "guard: other scripts stay editable"
+
 exit $fail

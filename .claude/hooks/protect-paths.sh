@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # PreToolUse: block edits to applied migrations and statutory rate data unless an active
 # register entry is declared (spec §5). Also blocks AI writes of VERIFIED into
-# docs/compliance/register.md (spec §10): only a named human may verify.
+# docs/compliance/register.md (spec §10): only a named human may verify. Also blocks every
+# Edit/Write to the guards themselves (.claude/hooks/**, .claude/settings*.json,
+# scripts/check-register.mjs, .github/workflows/**, .github/CODEOWNERS), with no unlock
+# (security review M2): changes there are made by a human and go through CODEOWNERS review.
 #
 # Fails closed: a missing dependency, unreadable stdin, unparseable JSON or an unresolvable
 # path never lets the tool call through. It always exits 2 in that case, never 0 and never
@@ -81,6 +84,9 @@ is_register=0
 is_gated=0
 for rel in ${rels[@]+"${rels[@]}"}; do
   case "$rel" in
+    .claude/hooks/*|.claude/settings*.json|scripts/check-register.mjs|.github/workflows/*|.github/codeowners)
+      echo "Blocked: $abs_input is a guard or CI file and is never AI-editable (security review M2). Ask the human to make this change; it needs CODEOWNERS review." >&2
+      exit 2 ;;
     docs/compliance/register.md) is_register=1 ;;
     migrations/applied/*|packages/tax-zm/rates/*) is_gated=1 ;;
   esac
