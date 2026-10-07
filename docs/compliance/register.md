@@ -1,6 +1,6 @@
 # Compliance Register
 
-Spec §10. Claude Code may add `VERIFY` rows; only a named human reviewer may set `VERIFIED`. Linted by `pnpm check:register`. The linter checks format only; the control is the Claude Code PreToolUse hook (which blocks AI writes of VERIFIED) plus human PR review.
+Spec §10. Claude Code may add `VERIFY` rows; only a named human reviewer may set `VERIFIED`. Linted by `pnpm check:register`, which checks format only. The control is human PR review, enforced by CODEOWNERS (`.github/CODEOWNERS`) with code-owner review required on main. The Claude Code PreToolUse hook, which blocks AI Edit/Write calls that would set `VERIFIED`, is an accident guard only: shell writes bypass it.
 
 | ID | Rule | Source | Effective | Implementation | Test | verified_by | Status |
 |---|---|---|---|---|---|---|---|

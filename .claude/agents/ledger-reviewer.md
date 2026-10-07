@@ -21,4 +21,17 @@ Also flag:
 - edits to `*.test.ts` files by the implementation author
 - unreachable branches added only for "safety"
 
+Protected-path diff check (security review M1). Run:
+
+```
+git diff <range> -- docs/compliance/register.md migrations/applied packages/tax-zm/rates .claude .github scripts/check-register.mjs
+```
+
+Report each of these as **critical**, whatever the task claims:
+- a register row whose status changes from VERIFY to VERIFIED, or any new VERIFIED row, or a filled-in `verified_by` cell;
+- any edit to a file under migrations/applied;
+- any weakening of a guard or CI gate: an edit to .claude/hooks, .claude/settings*.json, .github (workflows or CODEOWNERS) or scripts/check-register.mjs that removes, relaxes or skips a check.
+
+The PreToolUse hook only sees Edit/Write tools, so a shell write can bypass it. This diff check, human PR review and CODEOWNERS are the backstop.
+
 Be sceptical. Verify claims by running `pnpm --filter @zambooks/ledger test` and `pnpm test:invariants`. Report the exact output on failure. Do not report style nits as medium or higher.

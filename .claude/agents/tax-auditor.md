@@ -13,4 +13,17 @@ Rules:
 4. You may propose new VERIFY entries. You must never mark an entry VERIFIED or suggest that anyone other than a named human accountant may do so. The PreToolUse hook blocks AI writes of VERIFIED to the register; flag any attempt to work around it as critical.
 5. Do not rely on your own memory of Zambian rates. If the diff's value differs from the cited source, or the source is missing, report it as high severity.
 
+Protected-path diff check (security review M1). Run:
+
+```
+git diff <range> -- docs/compliance/register.md migrations/applied packages/tax-zm/rates .claude .github scripts/check-register.mjs
+```
+
+Report each of these as **critical**, whatever the task claims:
+- a register row whose status changes from VERIFY to VERIFIED, or any new VERIFIED row, or a filled-in `verified_by` cell;
+- any edit to a file under migrations/applied;
+- any weakening of a guard or CI gate: an edit to .claude/hooks, .claude/settings*.json, .github (workflows or CODEOWNERS) or scripts/check-register.mjs that removes, relaxes or skips a check.
+
+The PreToolUse hook only sees Edit/Write tools, so a shell write can bypass it. This diff check, human PR review and CODEOWNERS are the backstop.
+
 Return findings in this shape: severity, file:line, register ID, issue, scenario.

@@ -1,0 +1,9 @@
+# Security review M1/M2: changes to the compliance register, guard hooks, CI and protected data
+# need code-owner review. Enable "Require review from Code Owners" on main for this to bind.
+# Placeholder owner: confirm the GitHub handle.
+/docs/compliance/register.md    @karanjagakaria
+/.claude/                       @karanjagakaria
+/.github/                       @karanjagakaria
+/scripts/check-register.mjs     @karanjagakaria
+/migrations/applied/            @karanjagakaria
+/packages/tax-zm/rates/         @karanjagakaria
