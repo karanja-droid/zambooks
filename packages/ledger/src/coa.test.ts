@@ -37,6 +37,28 @@ describe('zm-sme-default template', () => {
   });
 });
 
+describe('instantiateTemplate reuses minted ids for the rounding account (review I1)', () => {
+  it('does not mint a second id for the rounding account', () => {
+    let calls = 0;
+    const counterId = (code: string) => {
+      calls += 1;
+      return AccountId(`acc-${code}-${calls}`);
+    };
+
+    const result = instantiateTemplate(template, CO, counterId);
+
+    expect(result.accounts.some((a) => a.id === result.roundingAccountId)).toBe(true);
+    expect(calls).toBe(result.accounts.length);
+
+    const books = openBooks(
+      { id: CO, name: 'Demo', functionalCurrency: 'ZMW', roundingAccountId: result.roundingAccountId },
+      result.accounts,
+      [],
+    );
+    expect(books.accounts.size).toBe(result.accounts.length);
+  });
+});
+
 describe('instantiateTemplate rejects bad templates', () => {
   const base = structuredClone(template);
   it.each([
