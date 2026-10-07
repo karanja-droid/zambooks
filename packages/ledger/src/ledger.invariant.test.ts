@@ -63,7 +63,7 @@ describe('§6 ledger invariants (property-based)', SLOW, () => {
   it('reversing any subset keeps every invariant, and reversing all zeroes the TB (§6.5)', () => {
     fc.assert(fc.property(journalsArb, fc.array(fc.boolean(), { maxLength: 25 }), (drafts, picks) => {
       const ctx = testContext();
-      let { books } = postAll(drafts);
+      let { books } = postAll(drafts, ctx);
       const originals = [...books.journals];
       const before = JSON.stringify(originals, (_k, v) => (typeof v === 'bigint' ? v.toString() : v));
       originals.forEach((j, i) => {
