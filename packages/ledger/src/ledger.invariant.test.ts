@@ -1,18 +1,19 @@
-import { Money, errorCode, sumMoney } from '@zambooks/shared';
+import { Money, convert, errorCode, identityRate, sumMoney } from '@zambooks/shared';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { UserId, type JournalId, type PeriodId } from './ids';
-import type { CompanyBooks, JournalDraft, PostedJournal } from './model';
+import { openBooks } from './books';
+import { AccountId, JournalId, PeriodId, UserId } from './ids';
+import type { CompanyBooks, JournalDraft, LedgerContext, PostedJournal } from './model';
 import { PERIOD_ADMIN, closePeriod, reopenPeriod } from './periods';
 import { post } from './post';
 import { accountBalances, balanceSheetCheck, subledgerBalances, trialBalance } from './reports';
 import { reverse } from './reverse';
 import { journalDraftArb, postAll, roundingDraftArb } from './testing/arbitraries';
-import { ACC, ALICE, BOB, CAROL, CO, OTHER_CO, PERIOD, testContext } from './testing/fixtures';
+import { ACC, ALICE, BOB, CAROL, CO, OTHER_CO, PERIOD, demoAccounts, demoPeriods, testContext } from './testing/fixtures';
 
 const RUNS = { numRuns: 2000 };
 /** 2,000 runs of whole-ledger properties take several seconds; vitest's 5 s default is too short. */
-const SLOW = { timeout: 300_000 };
+const SLOW = { timeout: 60_000 };
 const journalsArb = fc.array(journalDraftArb, { minLength: 1, maxLength: 25 });
 
 function balancedIn(j: PostedJournal): boolean {
@@ -36,9 +37,26 @@ function assertBooksInvariants(books: CompanyBooks): void {
 
 describe('§6 ledger invariants (property-based)', SLOW, () => {
   it('posted journals balance, are fully stamped, and books stay consistent (§6.1, 2, 3, 4, 7, 8, 9, 10)', () => {
-    fc.assert(fc.property(journalsArb, (drafts) => {
+    fc.assert(fc.property(journalsArb, fc.integer({ min: 1, max: 31 }), (drafts, asOfDay) => {
       const { books, journals } = postAll(drafts);
-      for (const j of journals) {
+      journals.forEach((j, ji) => {
+        const d = drafts[ji] as JournalDraft;
+        // §6.9 against an independent oracle: each draft line maps 1:1, in order, to a non-rounding posted line
+        // stamped with the draft's rate (identity for ZMW) and the shared convert() of its amount.
+        const used = d.fxRate ?? identityRate('ZMW', d.date);
+        const plain = j.lines.filter((l) => !l.isRounding);
+        expect(plain).toHaveLength(d.lines.length);
+        plain.forEach((l, i) => {
+          const dl = d.lines[i] as JournalDraft['lines'][number];
+          expect(l.lineNo).toBe(i + 1);
+          expect(l.accountId).toBe(dl.accountId);
+          expect(l.side).toBe(dl.side);
+          expect(l.partyId).toBe(dl.partyId ?? null);
+          expect(l.txnAmount.equals(dl.amount)).toBe(true);
+          expect({ rate: l.rate, rateSource: l.rateSource, rateDate: l.rateDate }).toEqual({ rate: used.rate, rateSource: used.source, rateDate: used.rateDate });
+          if (d.currency === 'ZMW') expect(l.rate).toBe('1');
+          expect(l.functionalAmount.equals(convert(l.txnAmount, used))).toBe(true);
+        });
         expect(balancedIn(j)).toBe(true);
         const roundingLines = j.lines.filter((l) => l.isRounding);
         expect(roundingLines.length).toBeLessThanOrEqual(1);
@@ -54,9 +72,19 @@ describe('§6 ledger invariants (property-based)', SLOW, () => {
           expect(r.accountId).toBe(ACC.rounding);
           expect(r.txnAmount.isZero()).toBe(true);
           expect(r.functionalAmount.minor * 2n).toBeLessThanOrEqual(BigInt(j.lines.length - 1));
+          expect(r.lineNo).toBe(j.lines.length);
+          expect({ rate: r.rate, rateSource: r.rateSource, rateDate: r.rateDate }).toEqual({ rate: used.rate, rateSource: used.source, rateDate: used.rateDate });
         }
-      }
+        if (d.currency === 'ZMW') expect(roundingLines).toHaveLength(0);
+      });
       assertBooksInvariants(books);
+      // §6.2 / §6.3 / §6.4 "at any date": a random October cut-off, which excludes later journals.
+      const asOf = `2026-10-${String(asOfDay).padStart(2, '0')}`;
+      const tb = trialBalance(books, asOf);
+      expect(tb.totalDebit.equals(tb.totalCredit)).toBe(true);
+      expect(balanceSheetCheck(books, asOf).holds).toBe(true);
+      expect(subledgerBalances(books, asOf, 'AR').reconciles).toBe(true);
+      expect(subledgerBalances(books, asOf, 'AP').reconciles).toBe(true);
     }), RUNS);
   });
 
@@ -92,10 +120,14 @@ describe('§6 ledger invariants (property-based)', SLOW, () => {
   });
 
   it('any one-minor-unit imbalance is rejected (§6.1)', () => {
-    fc.assert(fc.property(journalDraftArb, fc.nat(), (d, k) => {
+    fc.assert(fc.property(journalDraftArb, fc.nat(), fc.constantFrom(1n, -1n), (d, k, delta) => {
       const i = k % d.lines.length;
-      const lines = d.lines.map((l, idx) => (idx === i ? { ...l, amount: l.amount.add(Money.ofMinor(1n, l.amount.currency)) } : l));
-      expect(errorCode(() => post(postAll([]).books, { ...d, lines }, testContext()))).toBe('UNBALANCED');
+      const target = d.lines[i] as JournalDraft['lines'][number];
+      const amount = target.amount.add(Money.ofMinor(delta, target.amount.currency));
+      const lines = d.lines.map((l, idx) => (idx === i ? { ...l, amount } : l));
+      // Taking a 1-minor line down to zero is caught earlier, by the positive-amount guard.
+      const expected = amount.isZero() ? 'NON_POSITIVE_AMOUNT' : 'UNBALANCED';
+      expect(errorCode(() => post(postAll([]).books, { ...d, lines }, testContext()))).toBe(expected);
     }), RUNS);
   });
 });
@@ -208,75 +240,84 @@ describe('§6 ledger invariants: parked review items (property-based)', SLOW, ()
     }), RUNS);
   });
 
-  it('number series stay gapless under any mix of accepted and rejected drafts; a rejection consumes nothing (§6.7)', () => {
-    type Fault = 'none' | 'unbalanced' | 'closed' | 'noPeriod' | 'crossTenant' | 'noAuthor' | 'inactive' | 'fx' | 'sod' | 'reverseTwice';
-    const faultArb = fc.constantFrom<Fault>('none', 'none', 'none', 'unbalanced', 'closed', 'noPeriod', 'crossTenant', 'noAuthor', 'inactive', 'fx', 'sod', 'reverseTwice');
-    const corrupt = (d: JournalDraft, f: Fault): JournalDraft => {
+  it('number series stay gapless under any mix of accepted and rejected operations; a rejection consumes nothing (§6.7)', () => {
+    type Fault =
+      | 'none' | 'unbalanced' | 'closed' | 'noPeriod' | 'crossTenant' | 'noAuthor' | 'inactive' | 'fx'
+      | 'sod' | 'reverseTwice' | 'reverseReversal';
+    const faultArb = fc.constantFrom<Fault>(
+      'none', 'none', 'none', 'unbalanced', 'closed', 'noPeriod', 'crossTenant', 'noAuthor', 'inactive', 'fx',
+      'sod', 'reverseTwice', 'reverseReversal',
+    );
+    type PostFault = Exclude<Fault, 'none' | 'sod' | 'reverseTwice' | 'reverseReversal'>;
+    /** The corrupted draft and the exact code its guard must raise. */
+    const corrupt = (d: JournalDraft, f: PostFault): [JournalDraft, string] => {
       switch (f) {
         case 'unbalanced':
-          return { ...d, lines: d.lines.map((l, i) => (i === 0 ? { ...l, amount: l.amount.add(Money.ofMinor(1n, l.amount.currency)) } : l)) };
+          return [{ ...d, lines: d.lines.map((l, i) => (i === 0 ? { ...l, amount: l.amount.add(Money.ofMinor(1n, l.amount.currency)) } : l)) }, 'UNBALANCED'];
         case 'closed':
-          return { ...d, date: '2026-09-15', ...(d.fxRate ? { fxRate: { ...d.fxRate, rateDate: '2026-09-15' } } : {}) };
+          return [{ ...d, date: '2026-09-15', ...(d.fxRate ? { fxRate: { ...d.fxRate, rateDate: '2026-09-15' } } : {}) }, 'PERIOD_CLOSED'];
         case 'noPeriod':
-          return { ...d, date: '2027-01-15' };
+          return [{ ...d, date: '2027-01-15' }, 'NO_PERIOD'];
         case 'crossTenant':
-          return { ...d, companyId: OTHER_CO };
+          return [{ ...d, companyId: OTHER_CO }, 'CROSS_TENANT'];
         case 'noAuthor':
-          return { ...d, authorId: UserId('  ') };
+          return [{ ...d, authorId: UserId('  ') }, 'MISSING_AUTHOR'];
         case 'inactive':
-          return { ...d, lines: d.lines.map((l, i) => (i === 0 ? { accountId: ACC.dormant, side: l.side, amount: l.amount } : l)) };
-        case 'fx': {
+          return [{ ...d, lines: d.lines.map((l, i) => (i === 0 ? { accountId: ACC.dormant, side: l.side, amount: l.amount } : l)) }, 'INACTIVE_ACCOUNT'];
+        case 'fx':
           if (d.fxRate) {
-            return { companyId: d.companyId, series: d.series, date: d.date, currency: d.currency, memo: d.memo, authorId: d.authorId, lines: d.lines };
+            return [{ companyId: d.companyId, series: d.series, date: d.date, currency: d.currency, memo: d.memo, authorId: d.authorId, lines: d.lines }, 'MISSING_FX_RATE'];
           }
-          return { ...d, fxRate: { from: 'ZMW', to: 'ZMW', rate: '1', source: 'TEST', rateDate: '2026-10-01' } };
-        }
-        default:
-          return d;
+          return [{ ...d, fxRate: { from: 'ZMW', to: 'ZMW', rate: '1', source: 'TEST', rateDate: '2026-10-01' } }, 'BAD_FX_RATE'];
       }
     };
+    const REV_DATE = '2026-10-31';
     fc.assert(fc.property(fc.array(fc.tuple(journalDraftArb, faultArb, fc.nat()), { minLength: 1, maxLength: 30 }), (steps) => {
       let issued = 0;
       const ctx = testContext();
-      const counting = { now: ctx.now, newJournalId: (): JournalId => { issued += 1; return ctx.newJournalId(); } };
+      const counting: LedgerContext = { now: ctx.now, newJournalId: (): JournalId => { issued += 1; return ctx.newJournalId(); } };
       let books = postAll([]).books;
       let accepted = 0;
-      for (const [d, fault, pick] of steps) {
+      /** An accepted operation leaves its input untouched (§6.5) and takes exactly one id and one number. */
+      const accept = (run: (b: CompanyBooks) => { books: CompanyBooks }): void => {
+        const before = snapshot(books);
+        const next = run(books).books;
+        expect(snapshot(books)).toBe(before);
+        books = next;
+        accepted += 1;
+      };
+      /** A rejected operation throws the exact code, leaves the books unchanged and takes no id. */
+      const reject = (run: (b: CompanyBooks) => unknown, code: string): void => {
         const before = snapshot(books);
         const issuedBefore = issued;
-        let attempt: () => { books: CompanyBooks };
-        let expectReject = fault !== 'none';
-        if (fault === 'sod' || fault === 'reverseTwice') {
-          const originals = books.journals.filter((j) => j.reversalOf === null);
-          const target = originals[pick % Math.max(originals.length, 1)];
+        expect(errorCode(() => run(books))).toBe(code);
+        expect(snapshot(books)).toBe(before);
+        expect(issued).toBe(issuedBefore);
+      };
+      const reverseReq = (journalId: JournalId, approverId = BOB) => ({ journalId, date: REV_DATE, authorId: ALICE, approverId });
+      for (const [d, fault, pick] of steps) {
+        const pickFrom = <T,>(xs: readonly T[]): T | undefined => xs[pick % Math.max(xs.length, 1)];
+        if (fault === 'none') {
+          accept((b) => post(b, d, counting));
+        } else if (fault === 'sod') {
+          const target = pickFrom(books.journals.filter((j) => j.reversalOf === null && !books.reversals.has(j.id)));
+          if (target) reject((b) => reverse(b, reverseReq(target.id, ALICE), counting), 'SOD_VIOLATION');
+          else accept((b) => post(b, d, counting));
+        } else if (fault === 'reverseTwice') {
+          const target = pickFrom(books.journals.filter((j) => j.reversalOf === null));
           if (!target) {
-            attempt = () => post(books, d, counting);
-            expectReject = false;
-          } else if (fault === 'sod') {
-            attempt = () => reverse(books, { journalId: target.id, date: '2026-10-31', authorId: ALICE, approverId: ALICE }, counting);
-          } else {
-            if (!books.reversals.has(target.id)) {
-              books = reverse(books, { journalId: target.id, date: '2026-10-31', authorId: ALICE, approverId: BOB }, counting).books;
-              accepted += 1;
-            }
-            const snapAfterFirst = snapshot(books);
-            const issuedAfterFirst = issued;
-            expect(errorCode(() => reverse(books, { journalId: target.id, date: '2026-10-31', authorId: ALICE, approverId: BOB }, counting))).toBe('ALREADY_REVERSED');
-            expect(snapshot(books)).toBe(snapAfterFirst);
-            expect(issued).toBe(issuedAfterFirst);
+            accept((b) => post(b, d, counting));
             continue;
           }
+          if (!books.reversals.has(target.id)) accept((b) => reverse(b, reverseReq(target.id), counting));
+          reject((b) => reverse(b, reverseReq(target.id), counting), 'ALREADY_REVERSED');
+        } else if (fault === 'reverseReversal') {
+          const target = pickFrom(books.journals.filter((j) => j.reversalOf !== null));
+          if (target) reject((b) => reverse(b, reverseReq(target.id), counting), 'ALREADY_REVERSED');
+          else accept((b) => post(b, d, counting));
         } else {
-          const draft = corrupt(d, fault);
-          attempt = () => post(books, draft, counting);
-        }
-        if (expectReject) {
-          expect(errorCode(attempt)).toBeDefined();
-          expect(snapshot(books)).toBe(before);
-          expect(issued).toBe(issuedBefore);
-        } else {
-          books = attempt().books;
-          accepted += 1;
+          const [draft, code] = corrupt(d, fault);
+          reject((b) => post(b, draft, counting), code);
         }
       }
       expect(books.journals).toHaveLength(accepted);
@@ -284,6 +325,40 @@ describe('§6 ledger invariants: parked review items (property-based)', SLOW, ()
       assertBooksInvariants(books);
       const total = [...books.seriesCounters.values()].reduce((a, b) => a + b, 0);
       expect(total).toBe(accepted);
+    }), RUNS);
+  });
+
+  it('a tenant\'s books never accept another tenant\'s journals or account ids (§6.12, domain level)', () => {
+    const toOther = (id: string) => AccountId(`o${id.slice(1)}`);
+    const otherBooks = () =>
+      openBooks(
+        { id: OTHER_CO, name: 'Other Co Ltd', functionalCurrency: 'ZMW', roundingAccountId: toOther(ACC.rounding) },
+        demoAccounts().map((a) => ({ ...a, id: toOther(a.id), companyId: OTHER_CO })),
+        demoPeriods().map((p) => ({ ...p, id: PeriodId(`o-${p.id}`), companyId: OTHER_CO })),
+      );
+    const otherCtx = (): LedgerContext => {
+      let n = 0;
+      return { now: () => '2026-10-07T09:00:00.000Z', newJournalId: () => JournalId(`oj-${++n}`) };
+    };
+    const asOther = (d: JournalDraft): JournalDraft => ({
+      ...d,
+      companyId: OTHER_CO,
+      lines: d.lines.map((l) => ({ ...l, accountId: toOther(l.accountId) })),
+    });
+    expect(errorCode(() => openBooks({ id: OTHER_CO, name: 'x', functionalCurrency: 'ZMW', roundingAccountId: ACC.rounding }, demoAccounts(), []))).toBe('CROSS_TENANT');
+    fc.assert(fc.property(journalsArb, fc.array(journalDraftArb, { maxLength: 5 }), journalDraftArb, fc.nat(), (coDrafts, otherDrafts, d, pick) => {
+      const co = postAll(coDrafts);
+      let other = otherBooks();
+      const oc = otherCtx();
+      for (const od of otherDrafts) other = post(other, asOther(od), oc).books;
+      const before = snapshot(other);
+      const target = co.journals[pick % co.journals.length] as PostedJournal;
+      // Reversing a CO journal against OTHER_CO's books cannot find it.
+      expect(errorCode(() => reverse(other, { journalId: target.id, date: '2026-10-31', authorId: ALICE, approverId: BOB }, oc))).toBe('UNKNOWN_JOURNAL');
+      // OTHER_CO's books given a draft in its own name but with CO account ids.
+      expect(errorCode(() => post(other, { ...d, companyId: OTHER_CO }, oc))).toBe('UNKNOWN_ACCOUNT');
+      expect(snapshot(other)).toBe(before);
+      expect(other.journals.every((j) => j.companyId === OTHER_CO && j.lines.every((l) => l.companyId === OTHER_CO && l.accountId.startsWith('o-')))).toBe(true);
     }), RUNS);
   });
 });
