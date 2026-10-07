@@ -38,38 +38,70 @@ IFS=$'\t' read -r tool_name raw_path cwd <<<"$fields" || fail_closed "could not 
 
 project_dir="${CLAUDE_PROJECT_DIR:-}"
 [[ -n "$project_dir" ]] || fail_closed "CLAUDE_PROJECT_DIR is not set"
-project_dir="$(realpath -m -s "$project_dir")" || fail_closed "could not normalise CLAUDE_PROJECT_DIR"
 
-# Resolve relative paths against .cwd (falling back to CLAUDE_PROJECT_DIR), then normalise
-# with realpath -m -s (no existence requirement, no symlink resolution) so that //, ./ and
-# x/.. segments can't dodge the prefix comparisons below.
+# Resolve relative paths against .cwd (falling back to CLAUDE_PROJECT_DIR).
 case "$raw_path" in
   /*) abs_input="$raw_path" ;;
   *) abs_input="${cwd:-$project_dir}/$raw_path" ;;
 esac
-abs_path="$(realpath -m -s "$abs_input")" || fail_closed "could not normalise target path"
+
+# Two views of both the target and the project dir (security review M3):
+#  - `realpath -m -s`: lexical normalisation only (//, ./, x/.. collapse; symlinks kept), so
+#    the path the tool was *given* is checked;
+#  - `realpath -m`: every existing symlink resolved, so the file the tool would *actually*
+#    write is checked. This catches file symlinks, directory symlinks into protected dirs, a
+#    symlinked project root and a CLAUDE_PROJECT_DIR given through a symlink.
+# A target is protected if ANY (target view, project view) pair puts it under a protected
+# prefix. Comparison uses ASCII case-folded forms so that e.g. Docs/Compliance/Register.md
+# cannot alias the register on a case-insensitive filesystem (macOS, Windows).
+s_proj="$(realpath -m -s "$project_dir")" || fail_closed "could not normalise CLAUDE_PROJECT_DIR"
+r_proj="$(realpath -m "$project_dir")" || fail_closed "could not resolve CLAUDE_PROJECT_DIR"
+s_path="$(realpath -m -s "$abs_input")" || fail_closed "could not normalise target path"
+r_path="$(realpath -m "$abs_input")" || fail_closed "could not resolve target path"
+[[ -n "$s_proj" && -n "$r_proj" && -n "$s_path" && -n "$r_path" ]] || fail_closed "empty normalised path"
+
+lc() { printf '%s' "$1" | LC_ALL=C tr 'A-Z' 'a-z'; }
+
+# Case-folded project-relative forms of the target, one per (target view, project view) pair
+# where the target lies inside the project.
+rels=()
+for p in "$s_path" "$r_path"; do
+  lp="$(lc "$p")" || fail_closed "could not case-fold target path"
+  for d in "$s_proj" "$r_proj"; do
+    ld="$(lc "$d")" || fail_closed "could not case-fold CLAUDE_PROJECT_DIR"
+    ld="${ld%/}"
+    if [[ "$lp" == "$ld"/* ]]; then rels+=("${lp#"$ld"/}"); fi
+  done
+done
+
+is_register=0
+is_gated=0
+for rel in ${rels[@]+"${rels[@]}"}; do
+  case "$rel" in
+    docs/compliance/register.md) is_register=1 ;;
+    migrations/applied/*|packages/tax-zm/rates/*) is_gated=1 ;;
+  esac
+done
 
 register="$project_dir/docs/compliance/register.md"
-rates_dir="$project_dir/packages/tax-zm/rates"
-applied_dir="$project_dir/migrations/applied"
 
-# --- Register guard: applies regardless of tool_name, whenever the target IS the register,
-# and has no active-register-ref bypass by design (spec §10). ---
-if [[ "$abs_path" == "$register" ]]; then
-  if ! printf '%s' "$input" | node "$project_dir/.claude/hooks/register-guard.mjs" "$register"; then
+# --- Register guard: applies regardless of tool_name, whenever the target IS the register
+# (under any alias), and has no active-register-ref bypass by design (spec §10). The guard
+# reconstructs the post-edit content from the file the tool would actually write ($r_path).
+if (( is_register )); then
+  if ! printf '%s' "$input" | node "$project_dir/.claude/hooks/register-guard.mjs" "$r_path"; then
     exit 2
   fi
 fi
 
 # --- Protected-path guard: migrations/applied/** and packages/tax-zm/rates/** (spec §5). ---
-case "$abs_path" in
-  "$applied_dir"/*|"$rates_dir"/*)
-    ref_file="$project_dir/.claude/active-register-ref"
-    if [[ -f "$ref_file" && -f "$register" ]]; then
-      ref="$(tr -d '[:space:]' < "$ref_file")"
-      if [[ "$ref" =~ ^ZM-[0-9]{4}$ ]] && grep -q "^| $ref |" "$register"; then exit 0; fi
-    fi
-    echo "Blocked: $abs_path is protected (spec §5). Add or cite a docs/compliance/register.md entry and write its ID to .claude/active-register-ref." >&2
-    exit 2 ;;
-esac
+if (( is_gated )); then
+  ref_file="$project_dir/.claude/active-register-ref"
+  if [[ -f "$ref_file" && -f "$register" ]]; then
+    ref="$(tr -d '[:space:]' < "$ref_file")"
+    if [[ "$ref" =~ ^ZM-[0-9]{4}$ ]] && grep -q "^| $ref |" "$register"; then exit 0; fi
+  fi
+  echo "Blocked: $abs_input is protected (spec §5). Add or cite a docs/compliance/register.md entry and write its ID to .claude/active-register-ref." >&2
+  exit 2
+fi
 exit 0

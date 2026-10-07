@@ -10,7 +10,8 @@ hook="$real_root/.claude/hooks/protect-paths.sh"
 
 tmp_root="$(mktemp -d)"
 nodir="$(mktemp -d)"
-cleanup() { rm -rf "$tmp_root" "$nodir"; }
+link_parent="$(mktemp -d)"
+cleanup() { rm -rf "$tmp_root" "$nodir" "$link_parent"; }
 trap cleanup EXIT
 
 mkdir -p "$tmp_root/docs/compliance" "$tmp_root/.claude"
@@ -162,5 +163,42 @@ cp "$real_root/docs/compliance/register.md" "$register"
 expect_raw 2 "$(jq -n --arg path "$register" \
   '{tool_name:"Edit",tool_input:{file_path:$path,old_string:"ZRA’s guidance (not verbatim in the file)",new_string:"| ZM-0010 | Rule | Source | 2026-10-07 | impl.ts | impl.test.ts |  | VERIFIED |"}}')" \
   "bypass: non-verbatim old_string (e.g. curly-quote mismatch) fails closed, not silent no-op"
+
+# --- Symlink and case aliasing (security review M3). All aliases live in mktemp dirs. ---
+
+rm -f "$ref"
+verified_row='| ZM-0011 | Rule | Source | 2026-10-07 | impl.ts | impl.test.ts |  | VERIFIED |\n'
+write_verified() { # write_verified <path> -> JSON payload writing a VERIFIED row to <path>
+  jq -n --arg path "$1" --arg c "$(printf "$verified_row")" '{tool_name:"Write",tool_input:{file_path:$path,content:$c}}'
+}
+mkdir -p "$tmp_root/packages/tax-zm/rates" "$tmp_root/notes"
+
+ln -s "$register" "$tmp_root/notes/alias.md"
+expect_raw 2 "$(write_verified "$tmp_root/notes/alias.md")" \
+  "symlink: file symlink to register.md cannot receive a VERIFIED row"
+
+ln -s "$tmp_root/docs/compliance" "$tmp_root/notes/cmp"
+expect_raw 2 "$(write_verified "$tmp_root/notes/cmp/register.md")" \
+  "symlink: directory symlink to docs/compliance cannot receive a VERIFIED row"
+
+ln -s "$tmp_root/packages/tax-zm/rates" "$tmp_root/notes/rates"
+expect 2 "$tmp_root/notes/rates/vat.json" "symlink: directory symlink to packages/tax-zm/rates is blocked"
+
+ln -s "$tmp_root" "$link_parent/proj"
+expect 2 "$link_parent/proj/packages/tax-zm/rates/vat.json" "symlink: rates path through a symlinked project root is blocked"
+expect_raw 2 "$(write_verified "$link_parent/proj/docs/compliance/register.md")" \
+  "symlink: register path through a symlinked project root cannot receive a VERIFIED row"
+
+CLAUDE_PROJECT_DIR="$link_parent/proj" expect 2 "$tmp_root/packages/tax-zm/rates/vat.json" \
+  "symlink: CLAUDE_PROJECT_DIR given through a symlink, real rates path is blocked"
+CLAUDE_PROJECT_DIR="$link_parent/proj" expect_raw 2 "$(write_verified "$register")" \
+  "symlink: CLAUDE_PROJECT_DIR given through a symlink, real register path cannot receive a VERIFIED row"
+
+expect_raw 2 "$(write_verified "$tmp_root/Docs/Compliance/Register.md")" \
+  "case: Docs/Compliance/Register.md cannot receive a VERIFIED row"
+expect 2 "$tmp_root/Packages/Tax-ZM/Rates/vat.json" "case: Packages/Tax-ZM/Rates/vat.json is blocked"
+expect 2 "$tmp_root/MIGRATIONS/applied/0001.sql" "case: MIGRATIONS/applied/0001.sql is blocked"
+
+expect 0 "$tmp_root/notes/plain.md" "symlink/case checks leave ordinary files allowed"
 
 exit $fail
