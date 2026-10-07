@@ -9,11 +9,10 @@
 ### Security
 - Path guard resolves symlinks and case aliases, fails closed on malformed hook input, and protects its own hooks, settings, CI workflow, CODEOWNERS and register linter.
 - CI runs with a read-only token, without persisted credentials, and runs the hook test suite.
-- `.github/CODEOWNERS` covers the compliance register and guard files. **Action needed:** confirm the owner handle and enable "require code owner review" on `main`.
+- `.github/CODEOWNERS` (@karanja-droid) covers the compliance register, guard files and build configs. `main` requires a PR and the `verify` check. Code-owner review is off until a second account pushes code.
+- `security` workflow: CodeQL (security-extended), gitleaks secret scan, `pnpm audit --audit-level high` and dependency review on PRs. Dependabot updates npm and Actions weekly. All Actions pinned to commit SHAs.
 
 ### Known issues (plan 01, deferred)
-- No SAST/SCA/secret scanning in CI (spec §8). Required before plan 02, the first plan to handle secrets.
-- GitHub Actions are pinned to major tags, not commit SHAs.
 - Error codes are imprecise in places: a rounding line on the wrong account raises NO_ROUNDING_ACCOUNT, and more than one rounding line raises UNBALANCED. `CURRENCY_MISMATCH` is shared between LedgerError and MoneyError. Plan 04 error mapping must disambiguate.
 - `LedgerError` messages include amounts. Plan 04 must log `.code` only (§8).
 - `closePeriod` needs no role, the actor id is not checked for blank, and the returned `AuditEvent` is not bound to persistence. Plans 02 and 03 must persist the books change and the audit append in one transaction.
