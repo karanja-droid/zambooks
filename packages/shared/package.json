@@ -13,9 +13,6 @@
     "test:invariants": "vitest run invariant --passWithNoTests",
     "coverage": "vitest run --coverage --passWithNoTests"
   },
-  "dependencies": {
-    "decimal.js": "^10.6.0"
-  },
   "devDependencies": {
     "@vitest/coverage-v8": "^5.0.3",
     "typescript": "^5.9.3",
