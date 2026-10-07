@@ -68,6 +68,21 @@ describe('instantiateTemplate rejects bad templates', () => {
     ['duplicate codes', { ...base, accounts: [...base.accounts, base.accounts[0]] }],
     ['missing rounding account', { ...base, roundingAccountCode: '0000' }],
     ['bad account type', { ...base, accounts: [{ ...base.accounts[0], type: 'REVENUE' }] }],
+    ['unknown control kind', { ...base, accounts: [{ ...base.accounts[0], control: 'BOGUS' }] }],
+    ['bad ifrsSme prefix', { ...base, accounts: [{ ...base.accounts[0], ifrsSme: 'XYZ: not a valid prefix' }] }],
+    ['empty accounts array', { ...base, accounts: [] }],
+    [
+      'control/type mismatch',
+      { ...base, accounts: base.accounts.map((a) => (a.code === '1200' ? { ...a, type: 'LIABILITY' } : a)) },
+    ],
+    [
+      'control-account rounding account',
+      {
+        ...base,
+        accounts: base.accounts.map((a) => (a.code === base.roundingAccountCode ? { ...a, control: 'AP' } : a)),
+      },
+    ],
+    ['unknown key', { ...base, unexpectedField: 'not part of the schema' }],
   ])('%s', (_n, raw) => {
     expect(errorCode(() => instantiateTemplate(raw, CO, id))).toBe('INVALID_TEMPLATE');
   });
