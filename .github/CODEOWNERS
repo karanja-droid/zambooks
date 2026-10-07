@@ -1,0 +1,12 @@
+# Security review M1/M2: changes to the compliance register, guard hooks, CI and protected data
+# need code-owner review. Enable "Require review from Code Owners" on main for this to bind.
+/docs/compliance/register.md    @karanja-droid
+/.claude/                       @karanja-droid
+/.github/                       @karanja-droid
+/scripts/check-register.mjs     @karanja-droid
+/migrations/applied/            @karanja-droid
+/packages/tax-zm/rates/         @karanja-droid
+/package.json                   @karanja-droid
+/packages/*/package.json        @karanja-droid
+/eslint.config.js               @karanja-droid
+/turbo.json                     @karanja-droid

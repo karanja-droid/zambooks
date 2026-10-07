@@ -1,0 +1,18 @@
+# Compliance Register
+
+Spec §10. Claude Code may add `VERIFY` rows; only a named human reviewer may set `VERIFIED`. Linted by `pnpm check:register`, which checks format only. The control is human PR review, enforced by CODEOWNERS (`.github/CODEOWNERS`) with code-owner review required on main. The Claude Code PreToolUse hook, which blocks AI Edit/Write calls that would set `VERIFIED`, is an accident guard only: shell writes bypass it.
+
+| ID | Rule | Source | Effective | Implementation | Test | verified_by | Status |
+|---|---|---|---|---|---|---|---|
+| ZM-0001 | Default Zambian SME chart of accounts and IFRS for SMEs line mapping | IFRS for SMEs Sections 4–5; accountant review pending | 2026-10-07 | packages/ledger/templates/zm-sme-default.json | packages/ledger/src/coa.test.ts |  | VERIFY |
+| ZM-0002 | FX conversion rounds half-to-even to the functional currency minor unit | Internal policy proposal, ADR-0003; accountant review pending | 2026-10-07 | packages/shared/src/fx.ts | packages/shared/src/fx.test.ts |  | VERIFY |
+| ZM-0003 | FX rounding differences per journal post to a designated rounding account (8999) | Spec §6.10; accountant to confirm account and presentation | 2026-10-07 | packages/ledger/src/validate.ts | packages/ledger/src/validate.test.ts |  | VERIFY |
+
+## ZM-0001 review notes
+
+Added by task-9 fix round 1 (review findings M6/M7). These are notes for the accountant review, not a status change to the row above.
+
+- VAT output (code 2100) and withholding tax payable (code 2140) are mapped to `SFP: Current tax liabilities`. Under IFRS for SMEs Section 29, that caption is for income tax, not VAT or withholding tax — the mapping needs correction or a different caption.
+- VAT input (code 1250, an asset) and VAT output (code 2100, a liability) are mapped asymmetrically: input sits under `SFP: Trade and other receivables`, output sits under `SFP: Current tax liabilities` rather than a comparable payables treatment.
+- The template has no income tax expense account mapped to the statement of comprehensive income and no income tax payable account, so it cannot present the income tax expense line IFRS for SMEs Section 5.5 requires.
+- Code 8900 ("Foreign exchange gains and losses") is a single expense-type account netting both gains and losses. ADR-0003 permits this presentation, but it should be confirmed with the accountant alongside the rest of this template.
