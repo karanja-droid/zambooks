@@ -1,8 +1,16 @@
-import { convert, type CurrencyCode } from '@zambooks/shared';
+import { convert, isIsoDate, type CurrencyCode } from '@zambooks/shared';
 import { LedgerError } from './errors';
 import type { JournalId, UserId } from './ids';
 import type { CompanyBooks, LedgerContext, PostedJournal, PostedLine, PostResult, PreparedLine } from './model';
 import { findOpenPeriod, isUsableRate, netDebit, requireAccount, requireAuthor, requireParty } from './validate';
+
+const ISO_TIMESTAMP = /^(\d{4}-\d{2}-\d{2})T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,9})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/;
+
+/** True only for a full ISO-8601 timestamp (date, time and offset) on a real calendar date. */
+function isIsoTimestamp(s: string): boolean {
+  const m = ISO_TIMESTAMP.exec(s);
+  return m !== null && isIsoDate(m[1] as string);
+}
 
 export interface JournalHeader {
   readonly series: string;
@@ -111,6 +119,10 @@ export function commit(
     throw new LedgerError('DUPLICATE_JOURNAL_ID', `Journal id ${id} is already in the books`);
   }
   const postedAt = ctx.now();
+  // §6.8: every line records when it was posted; the context's clock is checked like any other input.
+  if (!isIsoTimestamp(postedAt)) {
+    throw new LedgerError('INVALID_TIMESTAMP', `Context timestamp ${JSON.stringify(postedAt)} is not ISO-8601`);
+  }
 
   const postedLines: readonly PostedLine[] = Object.freeze(
     lines.map((l, i) =>

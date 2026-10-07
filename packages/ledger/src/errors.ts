@@ -24,7 +24,8 @@ export type LedgerErrorCode =
   | 'NO_ROUNDING_ACCOUNT'
   | 'INVALID_PERIODS'
   | 'INVALID_TEMPLATE'
-  | 'DUPLICATE_JOURNAL_ID';
+  | 'DUPLICATE_JOURNAL_ID'
+  | 'INVALID_TIMESTAMP';
 
 export class LedgerError extends Error {
   constructor(
