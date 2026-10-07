@@ -60,7 +60,7 @@ describe('instantiateTemplate reuses minted ids for the rounding account (review
 });
 
 describe('instantiateTemplate rejects bad templates', () => {
-  const base = structuredClone(template);
+  const base: typeof template = JSON.parse(JSON.stringify(template));
   it.each([
     ['not an object', 42],
     ['bad status', { ...base, status: 'APPROVED' }],
