@@ -19,6 +19,9 @@ export function findOpenPeriod(books: CompanyBooks, date: string): Period {
   if (!isIsoDate(date)) throw new LedgerError('INVALID_DATE', `Not a real ISO date: ${JSON.stringify(date)}`);
   const period = books.periods.find((p) => p.start <= date && date <= p.end);
   if (!period) throw new LedgerError('NO_PERIOD', `No accounting period contains ${date}`);
+  if (period.companyId !== books.company.id) {
+    throw new LedgerError('CROSS_TENANT', `Period ${period.id} belongs to another company`);
+  }
   if (period.status !== 'OPEN') throw new LedgerError('PERIOD_CLOSED', `Period ${period.id} is closed`);
   return period;
 }

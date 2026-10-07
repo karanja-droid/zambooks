@@ -88,6 +88,9 @@ function checkHeader(books: CompanyBooks, header: JournalHeader): void {
   if (header.reversalOf !== null) {
     const original = books.journals.find((j) => j.id === header.reversalOf);
     if (!original) throw new LedgerError('UNKNOWN_JOURNAL', `No journal ${header.reversalOf}`);
+    if (original.companyId !== books.company.id) {
+      throw new LedgerError('CROSS_TENANT', `Journal ${original.id} belongs to another company`);
+    }
     if (books.reversals.has(original.id) || original.reversalOf !== null) {
       throw new LedgerError('ALREADY_REVERSED', `Journal ${original.id} is already reversed or is itself a reversal`);
     }

@@ -17,6 +17,9 @@ export interface ReverseRequest {
 export function reverse(books: CompanyBooks, req: ReverseRequest, ctx: LedgerContext): PostResult {
   const original = books.journals.find((j) => j.id === req.journalId);
   if (!original) throw new LedgerError('UNKNOWN_JOURNAL', `No journal ${req.journalId}`);
+  if (original.companyId !== books.company.id) {
+    throw new LedgerError('CROSS_TENANT', `Journal ${original.id} belongs to another company`);
+  }
   if (books.reversals.has(original.id) || original.reversalOf !== null) {
     throw new LedgerError('ALREADY_REVERSED', 'Journal is already reversed or is itself a reversal');
   }
