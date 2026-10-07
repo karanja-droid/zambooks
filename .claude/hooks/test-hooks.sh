@@ -151,4 +151,16 @@ expect_raw 2 '{not valid json' "invalid JSON input fails closed"
 
 expect_env 2 "$nodir" "$(printf '{"tool_name":"Edit","tool_input":{"file_path":"%s"}}' "$tmp_root/packages/ledger/src/post.ts")" "missing jq fails closed"
 
+# --- Register guard: round 2 findings (empty old_string / non-verbatim old_string) ---
+
+rm -f "$register"
+expect_raw 2 "$(jq -n --arg path "$register" \
+  '{tool_name:"Edit",tool_input:{file_path:$path,old_string:"",new_string:"| ZM-0009 | Rule | Source | 2026-10-07 | impl.ts | impl.test.ts |  | VERIFIED |\n"}}')" \
+  "bypass: empty old_string while register.md is missing still blocks a VERIFIED row"
+cp "$real_root/docs/compliance/register.md" "$register"
+
+expect_raw 2 "$(jq -n --arg path "$register" \
+  '{tool_name:"Edit",tool_input:{file_path:$path,old_string:"ZRA’s guidance (not verbatim in the file)",new_string:"| ZM-0010 | Rule | Source | 2026-10-07 | impl.ts | impl.test.ts |  | VERIFIED |"}}')" \
+  "bypass: non-verbatim old_string (e.g. curly-quote mismatch) fails closed, not silent no-op"
+
 exit $fail
