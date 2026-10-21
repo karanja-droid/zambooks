@@ -15,9 +15,9 @@
     "check:register": "node scripts/check-register.mjs docs/compliance/register.md"
   },
   "devDependencies": {
-    "eslint": "^10.12.0",
-    "turbo": "^2.11.7",
-    "typescript": "^5.9.3",
-    "typescript-eslint": "^8.71.1"
+    "eslint": "^10.13.0",
+    "turbo": "^2.11.9",
+    "typescript": "^7.0.2",
+    "typescript-eslint": "^8.71.2"
   }
 }
